@@ -11,8 +11,11 @@
 #define COLORS 3
 #define MAXBRIGHT 93 
 #define MAXBRIDELTA 8
-#define CHANGECHANCE 50
-#define FRAMEDELAY 0
+#define SLOWCHANGESKIP 1
+#define MAXCHANGECHANCE 80
+#define MINCHANGECHANCE 10
+#define MAXFRAMEDELAY 80
+#define MINFRAMEDELAY 0
 #define NOEASTERSTRENGTH 3
 
 Adafruit_NeoMatrix matrix = Adafruit_NeoMatrix(8, 8, 2, 2, PIN,
@@ -22,17 +25,22 @@ Adafruit_NeoMatrix matrix = Adafruit_NeoMatrix(8, 8, 2, 2, PIN,
   NEO_TILE_COLUMNS   + NEO_TILE_ZIGZAG,
   NEO_GRB            + NEO_KHZ800);
   
-uint32_t brightWheel(byte WheelPos, byte bri);
-
 //const uint16_t colors[] = {
 //  matrix.Color(255, 0, 0), matrix.Color(0, 255, 0), matrix.Color(0, 0, 255) };
   
 uint8_t cells[GRIDHEIGHT/2][GRIDWIDTH][COLORS];
 uint8_t firstLine[GRIDWIDTH][COLORS];
+byte change_chance;
+byte frame_delay;
+int slow_change_counter;
 
 void setup() {
   randomSeed(analogRead(0));
+  Serial.begin(9600);
   matrix.begin();
+  change_chance = (MAXCHANGECHANCE + MINCHANGECHANCE)/2;
+  frame_delay = (MAXFRAMEDELAY + MINFRAMEDELAY)/2;
+  slow_change_counter = 0;
   matrix.fillScreen(0);
   for (int i = 0; i < GRIDWIDTH/2; i++) {
     for (int k = 0; k < COLORS; k++) {
@@ -45,13 +53,25 @@ void setup() {
 }
 
 void loop() {
-  delay(FRAMEDELAY);
+  slow_change_counter++;
+  if (0 == (slow_change_counter % SLOWCHANGESKIP)) {
+    int temp_fd = frame_delay + random(-1, 2);
+    frame_delay = (byte) constrain(temp_fd, MINFRAMEDELAY, MAXFRAMEDELAY);
+    int temp_cc = change_chance + random(-1, 2);
+    change_chance = (byte) constrain(temp_cc, MINCHANGECHANCE, MAXCHANGECHANCE);
+    Serial.print("frame_delay = ");
+    Serial.print(frame_delay);
+    Serial.print("  change_chance = ");
+    Serial.println(change_chance);
+    slow_change_counter = 0;
+  }
+  delay(frame_delay);
   // update firstLine
   for (int i = 0; i < GRIDWIDTH/2; i++) {
     uint8_t pix_colors[COLORS];     
     for (int k = 0; k < COLORS; k++) {
       int pull_i = i;
-      if (random(100) < CHANGECHANCE) {
+      if (random(100) < change_chance) {
         byte change_type = random(2);
         switch (change_type) {
           case 0:
@@ -66,10 +86,8 @@ void loop() {
             break;
         }
       }
-        //pix_colors[k] = cells[i][j][k];
-        //uint8_t temp_c = constrain((firstLine[pull_i][k] + random(-MAXBRIDELTA + 1, MAXBRIDELTA), 0, MAXBRIGHT);
-        uint8_t temp_c = firstLine[pull_i][k] + random(-MAXBRIDELTA + 1, MAXBRIDELTA);
-        firstLine[i][k] = constrain(temp_c, 0, MAXBRIGHT);
+      uint8_t temp_c = firstLine[pull_i][k] + random(-MAXBRIDELTA + 1, MAXBRIDELTA);
+      firstLine[i][k] = constrain(temp_c, 0, MAXBRIGHT);
     }
   }
   
@@ -84,6 +102,10 @@ void loop() {
           cells[i][j][k] = firstLine[i][k];
         }
         pix_colors[k] = cells[i][j][k];
+        if ((0 == i) && (0 == j) && (0 == k)) {
+          Serial.print( "                           red @ 0 0 = ");
+          Serial.println(pix_colors[k]);
+        }
       }
       uint32_t pix_color = no_easter(pix_colors);
         //matrix.Color(pix_colors[0], pix_colors[1], pix_colors[2]);
@@ -112,5 +134,11 @@ uint32_t no_easter(uint8_t pix_colors[]) {
           pix_colors[min_index]/NOEASTERSTRENGTH + 1, pix_colors[max_index]);
     }
   }
+  // reduce green 
+  pix_colors[1] = pix_colors[1] * 3 / 4;
+
+  // debug
+  //pix_colors[1] = 0;
+  //pix_colors[2] = 0;
   return matrix.Color(pix_colors[0], pix_colors[1], pix_colors[2]);
 }
